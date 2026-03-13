@@ -149,6 +149,27 @@ def parse_listing(text: str) -> dict:
     if mi is not None:
         d["mileage"] = mi
 
+    # ---------------- NEW FIELD: title_status ----------------
+    ts = re.search(
+        r"title\s+status\s*:\s*([A-Za-z ]+?)(?:\n|$)",
+        text,
+        re.I
+    )
+    if ts:
+        val = ts.group(1).strip().lower()
+        if val:
+            d["title_status"] = val
+
+    # ---------------- NEW FIELD: transmission ----------------
+    tr = re.search(
+        r"transmission\s*:\s*([A-Za-z ]+?)(?:\n|$)",
+        text,
+        re.I
+    )
+    if tr:
+        val = tr.group(1).strip().lower()
+        if val:
+            d["transmission"] = val
     return d
 
 # -------------------- HTTP ENTRY --------------------
