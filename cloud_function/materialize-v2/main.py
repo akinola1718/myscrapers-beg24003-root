@@ -1,7 +1,7 @@
 # main.py
 # Build a single, ever-growing CSV from all structured JSONL files.
 # Reads:  gs://<bucket>/<STRUCTURED_PREFIX>/run_id=*/jsonl/*.jsonl
-# Writes: gs://<bucket>/<STRUCTURED_PREFIX>/datasets/listings_master.csv  (atomic publish)
+# Writes: gs://<bucket>/<STRUCTURED_PREFIX>/datasets/listings_master_v2.csv  (atomic publish)
 
 import csv
 import io
@@ -95,7 +95,7 @@ def materialize_http(request: Request):
     """
     HTTP POST (no body needed).
     Crawls ALL structured run folders, de-dupes by post_id (keep newest run),
-    and writes one CSV directly to .../datasets/listings_master.csv.
+    and writes one CSV directly to .../datasets/listings_master_v2.csv.
     Returns JSON with counts and output path.
     """
     try:
@@ -117,7 +117,7 @@ def materialize_http(request: Request):
                     latest_by_post[pid] = rec
 
         base = f"{STRUCTURED_PREFIX}/datasets"
-        final_key = f"{base}/listings_master-v2.csv"
+        final_key = f"{base}/listings_master_v2.csv"
         rows = _write_csv(latest_by_post.values(), final_key)
 
         return jsonify({
