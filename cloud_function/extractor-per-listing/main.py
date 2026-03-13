@@ -150,6 +150,35 @@ def parse_listing(text: str) -> dict:
         d["mileage"] = mi
 
     return d
+# ---------------- NEW FIELD: title_status ----------------
+    # "title status:"
+    # "clean"
+    # or "title status: clean"
+    ts = re.search(
+        r"title\s+status\s*:\s*([A-Za-z ]+?)(?:\n|$)",
+        text,
+        re.I
+    )
+    if ts:
+        val = ts.group(1).strip().lower()
+        if val:
+            d["title_status"] = val
+
+  # ---------------- NEW FIELD: transmission ----------------
+    # "transmission:"
+    # "automatic"
+    # or "transmission: automatic"
+    tr = re.search(
+        r"transmission\s*:\s*([A-Za-z ]+?)(?:\n|$)",
+        text,
+        re.I
+    )
+    if tr:
+        val = tr.group(1).strip().lower()
+        if val:
+            d["transmission"] = val
+
+    return d
 
 # -------------------- HTTP ENTRY --------------------
 def extract_http(request: Request):
