@@ -101,10 +101,26 @@ def materialize_http(request: Request):
     try:
         if not BUCKET_NAME:
             return jsonify({"ok": False, "error": "missing GCS_BUCKET env"}), 500
+            
+            #Note: below block not part of the original script
+        try:
+            body = request.get_json(silent=True) or {}
+        except Exception:
+            body = {}
 
-        run_ids = _list_run_ids(BUCKET_NAME, STRUCTURED_PREFIX)
-        if not run_ids:
-            return jsonify({"ok": False, "error": f"no runs found under {STRUCTURED_PREFIX}/"}), 200
+        requested_run_id = body.get("run_id")
+        #Note block below is not in the origina script, replace with the commented block below
+                if requested_run_id:
+            run_ids = [requested_run_id]
+        else:
+            run_ids = _list_run_ids(BUCKET_NAME, STRUCTURED_PREFIX)
+            if not run_ids:
+                return jsonify({"ok": False, "error": f"no runs found under {STRUCTURED_PREFIX}/"}), 200
+            run_ids = run_ids[-1:]   # latest run only
+            
+        #run_ids = _list_run_ids(BUCKET_NAME, STRUCTURED_PREFIX)
+        #if not run_ids:
+            #return jsonify({"ok": False, "error": f"no runs found under {STRUCTURED_PREFIX}/"}), 200
 
         latest_by_post: Dict[str, Dict] = {}
         for rid in run_ids:
