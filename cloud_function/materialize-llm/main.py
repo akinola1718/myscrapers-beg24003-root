@@ -1,7 +1,7 @@
 # main.py
 # Build a single, ever-growing CSV from all structured JSONL files.
-# Reads:  gs://<bucket>/<STRUCTURED_PREFIX>/run_id=*/jsonl/*.jsonl
-# Writes: gs://<bucket>/<STRUCTURED_PREFIX>/datasets/listings_master.csv  (atomic publish)
+# Reads:  gs://<bucket>/<STRUCTURED_PREFIX>/run_id=*/jsonl_llm/*.jsonl
+# Writes: gs://<bucket>/<STRUCTURED_PREFIX>/datasets/listings_master_llm.csv  (atomic publish)
 
 import csv
 import io
@@ -28,8 +28,8 @@ RUN_ID_PLAIN_RE = re.compile(r"^\d{14}$")        # 20251026170002
 CSV_COLUMNS = [
     "post_id", "run_id", "scraped_at",
     "price", "year", "make", "model", "mileage",
-    "title_status", "transmission","condition", "fuel", "color", "body_type"
-    "source_txt"
+    "title_status", "transmission","condition", "fuel", "color", "body_type",
+    "source_txt", "llm_provider", "llm_model", "llm_ts"
 ]
 
 def _list_run_ids(bucket: str, structured_prefix: str) -> list[str]:
