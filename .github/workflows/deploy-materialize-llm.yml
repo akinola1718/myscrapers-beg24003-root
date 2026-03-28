@@ -1,4 +1,4 @@
-name: Deploy materialize-llm(CF Gen2 + Cloud Scheduler)
+name: Deploy materialize-master (CF Gen2 + Cloud Scheduler)
 
 on:
   workflow_dispatch:
@@ -21,12 +21,12 @@ env:
   RUNTIME: python312
   BUCKET_NAME: ${{ vars.BUCKET_NAME }}
   TIMEOUT_SECONDS: "900"
-  MEMORY: "2Gi"            
+  MEMORY: "2Gi"
   STRUCTURED_PREFIX: "structured"
   RUNTIME_SA: ${{ vars.RUNTIME_SA }}
   DEPLOYER_SA: ${{ vars.DEPLOYER_SA }}
   WORKLOAD_IDENTITY_PROVIDER: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-  SCHEDULE_BODY: ${{ vars.MATERIALIZE_BODY || '{}' }}    
+  SCHEDULE_BODY: ${{ vars.MATERIALIZE_BODY || '{}' }}
   CRON_EXPR: "15 * * * *"   # :15 each hour
 
 jobs:
@@ -76,7 +76,6 @@ jobs:
             --no-allow-unauthenticated \
             --timeout="${TIMEOUT_SECONDS}" \
             --memory="${MEMORY}" \
-          
             "${SA_ARGS[@]}" \
             --set-env-vars="PROJECT_ID=${PROJECT_ID},GCS_BUCKET=${BUCKET_NAME},STRUCTURED_PREFIX=${STRUCTURED_PREFIX}"
 
