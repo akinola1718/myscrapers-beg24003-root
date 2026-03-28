@@ -77,7 +77,7 @@ jobs:
             --no-allow-unauthenticated \
             --timeout="${TIMEOUT_SECONDS}" \
             --memory="${MEMORY}" \
-            --cpu=2 \            #Not in original
+          
             "${SA_ARGS[@]}" \
             --set-env-vars="PROJECT_ID=${PROJECT_ID},GCS_BUCKET=${BUCKET_NAME},STRUCTURED_PREFIX=${STRUCTURED_PREFIX}"
 
