@@ -102,23 +102,23 @@ def materialize_http(request: Request):
         if not BUCKET_NAME:
             return jsonify({"ok": False, "error": "missing GCS_BUCKET env"}), 500
                 
-        #run_ids = _list_run_ids(BUCKET_NAME, STRUCTURED_PREFIX)
-        #if not run_ids:
-            #return jsonify({"ok": False, "error": f"no runs found under {STRUCTURED_PREFIX}/"}), 200
-        try:
-            body = request.get_json(silent=True) or {}
-        except Exception:
-            body = {}
+        run_ids = _list_run_ids(BUCKET_NAME, STRUCTURED_PREFIX)
+        if not run_ids:
+            return jsonify({"ok": False, "error": f"no runs found under {STRUCTURED_PREFIX}/"}), 200
+        #try:
+            #body = request.get_json(silent=True) or {}
+        #except Exception:
+            #body = {}
 
-        requested_run_id = body.get("run_id")
+        #requested_run_id = body.get("run_id")
 
-        if requested_run_id:
-            run_ids = [requested_run_id]
-        else:
-            run_ids = _list_run_ids(BUCKET_NAME, STRUCTURED_PREFIX)
-            if not run_ids:
-                return jsonify({"ok": False, "error": f"no runs found under {STRUCTURED_PREFIX}/"}), 200
-            run_ids = run_ids[-1:]
+        #if requested_run_id:
+            #run_ids = [requested_run_id]
+        #else:
+            #run_ids = _list_run_ids(BUCKET_NAME, STRUCTURED_PREFIX)
+            #if not run_ids:
+                #return jsonify({"ok": False, "error": f"no runs found under {STRUCTURED_PREFIX}/"}), 200
+            #run_ids = run_ids[-1:]
 
         #above code not in original script
         latest_by_post: Dict[str, Dict] = {}
