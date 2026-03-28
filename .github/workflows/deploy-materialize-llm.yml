@@ -21,13 +21,12 @@ env:
   RUNTIME: python312
   BUCKET_NAME: ${{ vars.BUCKET_NAME }}
   TIMEOUT_SECONDS: "900"
-  MEMORY: "2Gi"            #Not in original 2Gi in original
+  MEMORY: "2Gi"            
   STRUCTURED_PREFIX: "structured"
   RUNTIME_SA: ${{ vars.RUNTIME_SA }}
   DEPLOYER_SA: ${{ vars.DEPLOYER_SA }}
   WORKLOAD_IDENTITY_PROVIDER: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-  SCHEDULE_BODY: '{"run_id":20260328010005"}'
-  #SCHEDULE_BODY: ${{ vars.MATERIALIZE_BODY || '{}' }}     #this is the original
+  SCHEDULE_BODY: ${{ vars.MATERIALIZE_BODY || '{}' }}    
   CRON_EXPR: "15 * * * *"   # :15 each hour
 
 jobs:
