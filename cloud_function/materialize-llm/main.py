@@ -29,6 +29,7 @@ CSV_COLUMNS = [
     "post_id", "run_id", "scraped_at",
     "price", "year", "make", "model", "mileage",
     "title_status", "transmission","condition", "fuel", "color", "body_type",
+    "city", "state", "zip_code",
     "source_txt", "llm_provider", "llm_model", "llm_ts"
 ]
 
