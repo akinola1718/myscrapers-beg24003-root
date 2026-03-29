@@ -10,13 +10,15 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.tree import DecisionTreeRegressor
-from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
+from sklearn.inspection import permutation_importance, PartialDependenceDisplay
+import matplotlib.pyplot as plt
 
 # ---- ENV ----
 PROJECT_ID     = os.getenv("PROJECT_ID", "")
 GCS_BUCKET     = os.getenv("GCS_BUCKET", "")
-DATA_KEY       = os.getenv("DATA_KEY", "structured/datasets/listings_master.csv")
-OUTPUT_PREFIX  = os.getenv("OUTPUT_PREFIX", "preds")            # e.g., "structured/preds"
+DATA_KEY       = os.getenv("DATA_KEY", "structured/datasets/listings_master_llm.csv")
+OUTPUT_PREFIX  = os.getenv("OUTPUT_PREFIX", "structured/model_preds")            # e.g., "structured/preds"
 TIMEZONE       = os.getenv("TIMEZONE", "America/New_York")      # split by local day
 LOG_LEVEL      = os.getenv("LOG_LEVEL", "INFO")
 
@@ -63,6 +65,24 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
     df["year_num"]    = _clean_numeric(df["year"])
     df["mileage_num"] = _clean_numeric(df["mileage"])
 
+    current_year = pd.Timestamp.utcnow().year
+    df["vehicle_age"] = current_year - df["year_num"]
+    df["vehicle_age"] = df["vehicle_age"].clip(lower=0)
+
+    df["mileage_per_year"] = df["mileage_num"] / df["vehicle_age"].replace(0, np.nan)
+    df["mileage_per_year"] = df["mileage_per_year"].replace([np.inf, -np.inf], np.nan)
+
+    text_cols = [
+        "make", "model", "transmission", "condition",
+        "fuel", "color", "body_type", "title_status",
+        "city", "state"
+    ]
+
+    for c in text_cols:
+        if c in df.columns:
+            df[c] = df[c].astype(str).str.strip().str.lower()
+            df.loc[df[c].isin(["nan", "none", "null", ""]), c] = np.nan
+
     valid_price_rows = int(df["price_num"].notna().sum())
     logging.info("Rows total=%d | with valid numeric price=%d", orig_rows, valid_price_rows)
 
@@ -86,9 +106,29 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
         return {"status": "noop", "reason": "too few training rows", "train_rows": int(len(train_df))}
 
     # --- Model: make, model, year_num, mileage_num -> price_num ---
-    target = "price_num"
-    cat_cols = ["make", "model"]
-    num_cols = ["year_num", "mileage_num"]
+        target = "price_num"
+
+    cat_cols = [
+        "make",
+        "model",
+        "transmission",
+        "condition",
+        "fuel",
+        "color",
+        "body_type",
+        "title_status"
+    ]
+
+    # Add these later if they are populated enough:
+    # "city", "state"
+
+    num_cols = [
+        "year_num",
+        "mileage_num",
+        "vehicle_age",
+        "mileage_per_year"
+    ]
+
     feats = cat_cols + num_cols
 
     pre = ColumnTransformer(
@@ -110,7 +150,13 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
 
     # ---- Predict/evaluate on today's holdout (now includes actual price fields) ----
     mae_today = None
+    rmse_today = None
+    mape_today = None
+    bias_today = None
     preds_df = pd.DataFrame()
+    metrics_df = pd.DataFrame()
+    pi_df = pd.DataFrame()
+
     if not holdout_df.empty:
         X_h = holdout_df[feats]
         y_hat = pipe.predict(X_h)
@@ -120,30 +166,95 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
         preds_df["actual_price"] = holdout_df["price_num"]       # cleaned numeric truth
         preds_df["pred_price"]   = np.round(y_hat, 2)
 
+        preds_df["abs_error"] = (preds_df["pred_price"] - preds_df["actual_price"]).abs()
+        preds_df["pct_error"] = preds_df["abs_error"] / preds_df["actual_price"].replace(0, np.nan)
+
         if holdout_df["price_num"].notna().any():
             y_true = holdout_df["price_num"]
             mask = y_true.notna()
             if mask.any():
                 mae_today = float(mean_absolute_error(y_true[mask], y_hat[mask]))
+                rmse_today = float(np.sqrt(mean_squared_error(y_true[mask], y_hat[mask])))
+                mape_today = float(mean_absolute_percentage_error(y_true[mask], y_hat[mask]))
+                bias_today = float((y_hat[mask] - y_true[mask]).mean())
 
+                metrics_df = pd.DataFrame([{
+                    "today_local": str(today_local),
+                    "train_rows": int(len(train_df)),
+                    "holdout_rows": int(len(holdout_df)),
+                    "valid_price_rows": valid_price_rows,
+                    "mae": mae_today,
+                    "rmse": rmse_today,
+                    "mape": mape_today,
+                    "bias": bias_today,
+                    perm = permutation_importance(
+                    pipe,
+                    X_h[mask],
+                    y_true[mask],
+                    n_repeats=5,
+                    random_state=42,
+                    n_jobs=-1,
+                )
+
+                feature_names = pipe.named_steps["pre"].get_feature_names_out()
+
+                pi_df = pd.DataFrame({
+                    "feature": feature_names,
+                    "importance_mean": perm.importances_mean,
+                    "importance_std": perm.importances_std,
+                }).sort_values("importance_mean", ascending=False)
+
+                 top_pdp_features = ["mileage_num", "year_num", "vehicle_age"]
+
+                for feat in top_pdp_features:
+                    fig, ax = plt.subplots(figsize=(6, 4))
+                    PartialDependenceDisplay.from_estimator(pipe, X_train, [feat], ax=ax)
+                    buf = io.BytesIO()
+                    plt.tight_layout()
+                    plt.savefig(buf, format="png", dpi=150)
+                    buf.seek(0)
+
+                    blob = client.bucket(GCS_BUCKET).blob(
+                        f"{OUTPUT_PREFIX}/{pd.Timestamp.utcnow().tz_convert('UTC').strftime('%Y%m%d%H')}/pdp_{feat}.png"
+                    )
+                    blob.upload_from_string(buf.read(), content_type="image/png")
+                    plt.close(fig)
+                }])
+                
     # --- Output path: HOURLY folder structure ---
     now_utc = pd.Timestamp.utcnow().tz_convert("UTC")
-    out_key = f"{OUTPUT_PREFIX}/{now_utc.strftime('%Y%m%d%H')}/preds.csv"
+    preds_key = f"{OUTPUT_PREFIX}/{now_utc.strftime('%Y%m%d%H')}/predictions.csv"
+    metrics_key = f"{OUTPUT_PREFIX}/{now_utc.strftime('%Y%m%d%H')}/metrics.csv"
+    pi_key = f"{OUTPUT_PREFIX}/{now_utc.strftime('%Y%m%d%H')}/permutation_importance.csv"
 
     if not dry_run and len(preds_df) > 0:
-        _write_csv_to_gcs(client, GCS_BUCKET, out_key, preds_df)
-        logging.info("Wrote predictions to gs://%s/%s (%d rows)", GCS_BUCKET, out_key, len(preds_df))
-    else:
-        logging.info("Dry run or no holdout rows; skip write. Would write to gs://%s/%s", GCS_BUCKET, out_key)
+        _write_csv_to_gcs(client, GCS_BUCKET, preds_key, preds_df)
+        logging.info("Wrote predictions to gs://%s/%s (%d rows)", GCS_BUCKET, preds_key, len(preds_df))
 
-    return {
+        if len(metrics_df) > 0:
+            _write_csv_to_gcs(client, GCS_BUCKET, metrics_key, metrics_df)
+            logging.info("Wrote metrics to gs://%s/%s", GCS_BUCKET, metrics_key)
+
+        if len(pi_df) > 0:
+            _write_csv_to_gcs(client, GCS_BUCKET, pi_key, pi_df)
+            logging.info("Wrote permutation importance to gs://%s/%s", GCS_BUCKET, pi_key)
+    else:
+        logging.info("Dry run or no holdout rows; skip write. Would write to gs://%s/%s", GCS_BUCKET, preds_key)
+    
+
+  return {
         "status": "ok",
         "today_local": str(today_local),
         "train_rows": int(len(train_df)),
         "holdout_rows": int(len(holdout_df)),
         "valid_price_rows": valid_price_rows,
         "mae_today": mae_today,
-        "output_key": out_key,
+        "rmse_today": rmse_today,
+        "mape_today": mape_today,
+        "bias_today": bias_today,
+        "predictions_key": preds_key,
+        "metrics_key": metrics_key,
+        "pi_key": pi_key,
         "dry_run": dry_run,
         "timezone": TIMEZONE,
     }
