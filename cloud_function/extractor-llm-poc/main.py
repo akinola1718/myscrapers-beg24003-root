@@ -176,8 +176,11 @@ def _vertex_extract_fields(raw_text: str) -> dict:
             "fuel": {"type": "string", "nullable": True},
             "color": {"type": "string", "nullable": True},
             "body_type": {"type": "string", "nullable": True},
+            "city": {"type": "string", "nullable": True},
+            "state": {"type": "string", "nullable": True},
+            "zip_code": {"type": "string", "nullable": True},
         },
-        "required": ["price", "year", "make", "model", "mileage", "title_status", "transmission", "condition", "fuel", "color", "body_type"]
+        "required": ["price", "year", "make", "model", "mileage", "title_status", "transmission", "condition", "fuel", "color", "body_type", "city", "state", "zip_code"]
     }
 
     # System instruction (will be prepended to the prompt)
@@ -186,7 +189,7 @@ def _vertex_extract_fields(raw_text: str) -> dict:
         "Return a strict JSON object that conforms to the provided schema. "
         "If a value is not present, use null. "
         "Rules: integers for price/year/mileage; price in USD; mileage in miles;" 
-        "strings for title_status, transmission, make, model, condition, fuel, color, and body_type; "
+        "strings for title_status, transmission, make, model, condition, fuel, color, and body_type, city,zip_code, state; "
         "do not infer values not explicitly present; do not add extra keys."
     )
 
@@ -245,6 +248,9 @@ def _vertex_extract_fields(raw_text: str) -> dict:
     parsed["fuel"] = _norm_str(parsed.get("fuel"))
     parsed["color"] = _norm_str(parsed.get("color"))
     parsed["body_type"] = _norm_str(parsed.get("body_type"))
+    parsed["city"] = _norm_str(parsed.get("city"))
+    parsed["state"] = _norm_str(parsed.get("state"))
+    parsed["zip_code"] = _norm_str(parsed.get("zip_code"))
     return parsed
 
 
@@ -338,6 +344,9 @@ def llm_extract_http(request: Request):
                 "body_type": parsed.get("body_type"),
                 "title_status": parsed.get("title_status"),
                 "transmission": parsed.get("transmission"),
+                "city": parsed.get("city"),
+                "state": parsed.get("state"),
+                "zip_code": parsed.get("zip_code"),
                 "llm_provider": "vertex",
                 "llm_model": LLM_MODEL,
                 "llm_ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
