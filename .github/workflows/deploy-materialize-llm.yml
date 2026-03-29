@@ -26,7 +26,8 @@ env:
   RUNTIME_SA: ${{ vars.RUNTIME_SA }}
   DEPLOYER_SA: ${{ vars.DEPLOYER_SA }}
   WORKLOAD_IDENTITY_PROVIDER: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-  SCHEDULE_BODY: ${{ vars.MATERIALIZE_BODY || '{}' }}
+  SCHEDULE_BODY: '{"max_files":30}'
+  #SCHEDULE_BODY: ${{ vars.MATERIALIZE_BODY || '{}' }}
   CRON_EXPR: "15 * * * *"   # :15 each hour
 
 jobs:
@@ -77,7 +78,7 @@ jobs:
             --timeout="${TIMEOUT_SECONDS}" \
             --memory="${MEMORY}" \
             "${SA_ARGS[@]}" \
-            --set-env-vars="PROJECT_ID=${PROJECT_ID},GCS_BUCKET=${BUCKET_NAME},STRUCTURED_PREFIX=${STRUCTURED_PREFIX}"
+            --set-env-vars="PROJECT_ID=${PROJECT_ID},GCS_BUCKET=${BUCKET_NAME},STRUCTURED_PREFIX=${STRUCTURED_PREFIX}, MAX_FILES=30"
 
       - name: Grant invoker to deployer & runtime SAs
         shell: bash
