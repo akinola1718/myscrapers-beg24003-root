@@ -106,7 +106,7 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
         return {"status": "noop", "reason": "too few training rows", "train_rows": int(len(train_df))}
 
     # --- Model: make, model, year_num, mileage_num -> price_num ---
-        target = "price_num"
+    target = "price_num"
 
     cat_cols = [
         "make",
@@ -187,6 +187,7 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
                     "rmse": rmse_today,
                     "mape": mape_today,
                     "bias": bias_today,
+                   }]) 
                     perm = permutation_importance(
                     pipe,
                     X_h[mask],
@@ -219,7 +220,7 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
                     )
                     blob.upload_from_string(buf.read(), content_type="image/png")
                     plt.close(fig)
-                }])
+               
                 
     # --- Output path: HOURLY folder structure ---
     now_utc = pd.Timestamp.utcnow().tz_convert("UTC")
