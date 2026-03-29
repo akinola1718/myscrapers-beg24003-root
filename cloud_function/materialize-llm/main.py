@@ -17,6 +17,7 @@ from google.cloud import storage
 # -------------------- ENV --------------------
 BUCKET_NAME        = os.getenv("GCS_BUCKET")                      # REQUIRED
 STRUCTURED_PREFIX  = os.getenv("STRUCTURED_PREFIX", "structured") # e.g., "structured"
+MAX_FILES          = int(os.getenv("MAX_FILES", "30"))
 
 storage_client = storage.Client()
 
@@ -46,20 +47,31 @@ def _list_run_ids(bucket: str, structured_prefix: str) -> list[str]:
                 run_ids.append(rid)
     return sorted(run_ids)
 
-def _jsonl_records_for_run(bucket: str, structured_prefix: str, run_id: str):
-    """Yield dict records from .jsonl under .../run_id=<run_id>/jsonl/ (one JSON per file)."""
+def _jsonl_records_for_run(bucket: str, structured_prefix: str, run_id: str, max_files: int = 30):
+    """
+    Yield dict records from the most recent .jsonl files under
+    .../run_id=<run_id>/jsonl_llm/
+    """
     b = storage_client.bucket(bucket)
     prefix = f"{structured_prefix}/run_id={run_id}/jsonl_llm/"
-    for blob in b.list_blobs(prefix=prefix):
-        if not blob.name.endswith(".jsonl"):
-            continue
+
+    blobs = [blob for blob in b.list_blobs(prefix=prefix) if blob.name.endswith(".jsonl")]
+
+    blobs = sorted(
+        blobs,
+        key=lambda blob: blob.updated if blob.updated is not None else datetime.now(timezone.utc),
+        reverse=True,
+    )
+
+    blobs = blobs[:max_files]
+
+    for blob in blobs:
         data = blob.download_as_text()
         line = data.strip()
         if not line:
             continue
         try:
             rec = json.loads(line)
-            # ensure required keys exist
             rec.setdefault("run_id", run_id)
             yield rec
         except Exception:
@@ -103,9 +115,22 @@ def materialize_http(request: Request):
         if not BUCKET_NAME:
             return jsonify({"ok": False, "error": "missing GCS_BUCKET env"}), 500
                 
-        run_ids = _list_run_ids(BUCKET_NAME, STRUCTURED_PREFIX)
-        if not run_ids:
-            return jsonify({"ok": False, "error": f"no runs found under {STRUCTURED_PREFIX}/"}), 200
+        try:
+            body = request.get_json(silent=True) or {}
+        except Exception:
+            body = {}
+
+        requested_run_id = body.get("run_id")
+        max_files = int(body.get("max_files", MAX_FILES))
+
+        if requested_run_id:
+            run_ids = [requested_run_id]
+        else:
+            run_ids = _list_run_ids(BUCKET_NAME, STRUCTURED_PREFIX)
+            if not run_ids:
+                return jsonify({"ok": False, "error": f"no runs found under {STRUCTURED_PREFIX}/"}), 200
+            run_ids = run_ids[-1:]   # latest run only
+            
         #try:
             #body = request.get_json(silent=True) or {}
         #except Exception:
@@ -121,10 +146,9 @@ def materialize_http(request: Request):
                 #return jsonify({"ok": False, "error": f"no runs found under {STRUCTURED_PREFIX}/"}), 200
             #run_ids = run_ids[-1:]
 
-        #above code not in original script
         latest_by_post: Dict[str, Dict] = {}
         for rid in run_ids:
-            for rec in _jsonl_records_for_run(BUCKET_NAME, STRUCTURED_PREFIX, rid):
+            for rec in _jsonl_records_for_run(BUCKET_NAME, STRUCTURED_PREFIX, rid, max_files=max_files):
                 pid = rec.get("post_id")
                 if not pid:
                     continue
@@ -141,6 +165,7 @@ def materialize_http(request: Request):
             "runs_scanned": len(run_ids),
             "unique_listings": len(latest_by_post),
             "rows_written": rows,
+            "max_files": max_files,
             "output_csv": f"gs://{BUCKET_NAME}/{final_key}"
         }), 200
     except Exception as e:
