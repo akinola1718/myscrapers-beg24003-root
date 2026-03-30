@@ -1,28 +1,40 @@
 # Decision Tree: train on all data < today (local TZ); hold out today
 # HTTP entrypoint: train_dt_http
 
-import os, io, json, logging, traceback, re
+import os
+import io
+import json
+import logging
+import traceback
 import numpy as np
 import pandas as pd
+
 from google.cloud import storage
+
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.tree import DecisionTreeRegressor
-from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
+from sklearn.metrics import (
+    mean_absolute_error,
+    mean_squared_error,
+    mean_absolute_percentage_error,
+)
 from sklearn.inspection import permutation_importance, PartialDependenceDisplay
+
 import matplotlib.pyplot as plt
 
 # ---- ENV ----
-PROJECT_ID     = os.getenv("PROJECT_ID", "")
-GCS_BUCKET     = os.getenv("GCS_BUCKET", "")
-DATA_KEY       = os.getenv("DATA_KEY", "structured/datasets/listings_master_llm.csv")
-OUTPUT_PREFIX  = os.getenv("OUTPUT_PREFIX", "structured/model_preds")            # e.g., "structured/preds"
-TIMEZONE       = os.getenv("TIMEZONE", "America/New_York")      # split by local day
-LOG_LEVEL      = os.getenv("LOG_LEVEL", "INFO")
+PROJECT_ID = os.getenv("PROJECT_ID", "")
+GCS_BUCKET = os.getenv("GCS_BUCKET", "")
+DATA_KEY = os.getenv("DATA_KEY", "structured/datasets/listings_master_llm.csv")
+OUTPUT_PREFIX = os.getenv("OUTPUT_PREFIX", "structured/model_preds")
+TIMEZONE = os.getenv("TIMEZONE", "America/New_York")
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(message)s")
+
 
 def _read_csv_from_gcs(client: storage.Client, bucket: str, key: str) -> pd.DataFrame:
     b = client.bucket(bucket)
@@ -31,15 +43,27 @@ def _read_csv_from_gcs(client: storage.Client, bucket: str, key: str) -> pd.Data
         raise FileNotFoundError(f"gs://{bucket}/{key} not found")
     return pd.read_csv(io.BytesIO(blob.download_as_bytes()))
 
+
 def _write_csv_to_gcs(client: storage.Client, bucket: str, key: str, df: pd.DataFrame):
     b = client.bucket(bucket)
     blob = b.blob(key)
     blob.upload_from_string(df.to_csv(index=False), content_type="text/csv")
 
+
+def _write_png_to_gcs(client: storage.Client, bucket: str, key: str, fig):
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+    buf.seek(0)
+    b = client.bucket(bucket)
+    blob = b.blob(key)
+    blob.upload_from_string(buf.read(), content_type="image/png")
+    plt.close(fig)
+
+
 def _clean_numeric(s: pd.Series) -> pd.Series:
-    # Strip $, commas, spaces; keep digits and dot
     s = s.astype(str).str.replace(r"[^\d.]+", "", regex=True).str.strip()
     return pd.to_numeric(s, errors="coerce")
+
 
 def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int = 10):
     client = storage.Client(project=PROJECT_ID)
@@ -61,10 +85,11 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
 
     # --- Clean numerics BEFORE counting/dropping ---
     orig_rows = len(df)
-    df["price_num"]   = _clean_numeric(df["price"])
-    df["year_num"]    = _clean_numeric(df["year"])
+    df["price_num"] = _clean_numeric(df["price"])
+    df["year_num"] = _clean_numeric(df["year"])
     df["mileage_num"] = _clean_numeric(df["mileage"])
 
+    # --- Engineered features ---
     current_year = pd.Timestamp.utcnow().year
     df["vehicle_age"] = current_year - df["year_num"]
     df["vehicle_age"] = df["vehicle_age"].clip(lower=0)
@@ -72,10 +97,18 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
     df["mileage_per_year"] = df["mileage_num"] / df["vehicle_age"].replace(0, np.nan)
     df["mileage_per_year"] = df["mileage_per_year"].replace([np.inf, -np.inf], np.nan)
 
+    # --- Standardize text/categorical fields ---
     text_cols = [
-        "make", "model", "transmission", "condition",
-        "fuel", "color", "body_type", "title_status",
-        "city", "state"
+        "make",
+        "model",
+        "transmission",
+        "condition",
+        "fuel",
+        "color",
+        "body_type",
+        "title_status",
+        "city",
+        "state",
     ]
 
     for c in text_cols:
@@ -87,14 +120,21 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
     logging.info("Rows total=%d | with valid numeric price=%d", orig_rows, valid_price_rows)
 
     counts = df["date_local"].value_counts().sort_index()
-    logging.info("Recent date counts (local): %s", json.dumps({str(k): int(v) for k, v in counts.tail(8).items()}))
+    logging.info(
+        "Recent date counts (local): %s",
+        json.dumps({str(k): int(v) for k, v in counts.tail(8).items()}),
+    )
 
     unique_dates = sorted(d for d in df["date_local"].dropna().unique())
     if len(unique_dates) < 2:
-        return {"status": "noop", "reason": "need at least two distinct dates", "dates": [str(d) for d in unique_dates]}
+        return {
+            "status": "noop",
+            "reason": "need at least two distinct dates",
+            "dates": [str(d) for d in unique_dates],
+        }
 
     today_local = unique_dates[-1]
-    train_df   = df[df["date_local"] <  today_local].copy()
+    train_df = df[df["date_local"] < today_local].copy()
     holdout_df = df[df["date_local"] == today_local].copy()
 
     train_df = train_df[train_df["price_num"].notna()]
@@ -105,7 +145,7 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
     if len(train_df) < 40:
         return {"status": "noop", "reason": "too few training rows", "train_rows": int(len(train_df))}
 
-    # --- Model: make, model, year_num, mileage_num -> price_num ---
+    # --- Model features -> price_num ---
     target = "price_num"
 
     cat_cols = [
@@ -116,39 +156,56 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
         "fuel",
         "color",
         "body_type",
-        "title_status"
+        "title_status",
     ]
 
     # Add these later if they are populated enough:
-    # "city", "state"
+    # cat_cols += ["city", "state"]
 
     num_cols = [
         "year_num",
         "mileage_num",
         "vehicle_age",
-        "mileage_per_year"
+        "mileage_per_year",
     ]
 
     feats = cat_cols + num_cols
 
+    # Ensure all feature columns exist
+    for col in feats:
+        if col not in train_df.columns:
+            train_df[col] = np.nan
+        if col not in holdout_df.columns:
+            holdout_df[col] = np.nan
+
     pre = ColumnTransformer(
         transformers=[
             ("num", SimpleImputer(strategy="median"), num_cols),
-            ("cat", Pipeline([
-                ("imp", SimpleImputer(strategy="most_frequent")),
-                ("oh", OneHotEncoder(handle_unknown="ignore"))
-            ]), cat_cols),
+            (
+                "cat",
+                Pipeline(
+                    [
+                        ("imp", SimpleImputer(strategy="most_frequent")),
+                        ("oh", OneHotEncoder(handle_unknown="ignore")),
+                    ]
+                ),
+                cat_cols,
+            ),
         ]
     )
 
-    model = DecisionTreeRegressor(max_depth=max_depth, min_samples_leaf=min_samples_leaf, random_state=42)
+    model = DecisionTreeRegressor(
+        max_depth=max_depth,
+        min_samples_leaf=min_samples_leaf,
+        random_state=42,
+    )
     pipe = Pipeline([("pre", pre), ("model", model)])
 
     X_train = train_df[feats]
     y_train = train_df[target]
     pipe.fit(X_train, y_train)
 
-    # ---- Predict/evaluate on today's holdout (now includes actual price fields) ----
+    # ---- Predict/evaluate on today's holdout ----
     mae_today = None
     rmse_today = None
     mape_today = None
@@ -157,37 +214,45 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
     metrics_df = pd.DataFrame()
     pi_df = pd.DataFrame()
 
+    now_utc = pd.Timestamp.utcnow().tz_convert("UTC")
+    hour_key = now_utc.strftime("%Y%m%d%H")
+
     if not holdout_df.empty:
         X_h = holdout_df[feats]
         y_hat = pipe.predict(X_h)
 
         cols = ["post_id", "scraped_at", "make", "model", "year", "mileage", "price"]
-        preds_df = holdout_df[cols].copy()
-        preds_df["actual_price"] = holdout_df["price_num"]       # cleaned numeric truth
-        preds_df["pred_price"]   = np.round(y_hat, 2)
-
+        available_cols = [c for c in cols if c in holdout_df.columns]
+        preds_df = holdout_df[available_cols].copy()
+        preds_df["actual_price"] = holdout_df["price_num"]
+        preds_df["pred_price"] = np.round(y_hat, 2)
         preds_df["abs_error"] = (preds_df["pred_price"] - preds_df["actual_price"]).abs()
         preds_df["pct_error"] = preds_df["abs_error"] / preds_df["actual_price"].replace(0, np.nan)
 
         if holdout_df["price_num"].notna().any():
             y_true = holdout_df["price_num"]
             mask = y_true.notna()
-           if mask.any():
+
+            if mask.any():
                 mae_today = float(mean_absolute_error(y_true[mask], y_hat[mask]))
                 rmse_today = float(np.sqrt(mean_squared_error(y_true[mask], y_hat[mask])))
                 mape_today = float(mean_absolute_percentage_error(y_true[mask], y_hat[mask]))
                 bias_today = float((y_hat[mask] - y_true[mask]).mean())
 
-                metrics_df = pd.DataFrame([{
-                    "today_local": str(today_local),
-                    "train_rows": int(len(train_df)),
-                    "holdout_rows": int(len(holdout_df)),
-                    "valid_price_rows": valid_price_rows,
-                    "mae": mae_today,
-                    "rmse": rmse_today,
-                    "mape": mape_today,
-                    "bias": bias_today,
-                }])
+                metrics_df = pd.DataFrame(
+                    [
+                        {
+                            "today_local": str(today_local),
+                            "train_rows": int(len(train_df)),
+                            "holdout_rows": int(len(holdout_df)),
+                            "valid_price_rows": valid_price_rows,
+                            "mae": mae_today,
+                            "rmse": rmse_today,
+                            "mape": mape_today,
+                            "bias": bias_today,
+                        }
+                    ]
+                )
 
                 perm = permutation_importance(
                     pipe,
@@ -199,34 +264,25 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
                 )
 
                 feature_names = pipe.named_steps["pre"].get_feature_names_out()
-
-                pi_df = pd.DataFrame({
-                    "feature": feature_names,
-                    "importance_mean": perm.importances_mean,
-                    "importance_std": perm.importances_std,
-                }).sort_values("importance_mean", ascending=False)
+                pi_df = pd.DataFrame(
+                    {
+                        "feature": feature_names,
+                        "importance_mean": perm.importances_mean,
+                        "importance_std": perm.importances_std,
+                    }
+                ).sort_values("importance_mean", ascending=False)
 
                 top_pdp_features = ["mileage_num", "year_num", "vehicle_age"]
-
                 for feat in top_pdp_features:
                     fig, ax = plt.subplots(figsize=(6, 4))
                     PartialDependenceDisplay.from_estimator(pipe, X_train, [feat], ax=ax)
-                    buf = io.BytesIO()
-                    plt.tight_layout()
-                    plt.savefig(buf, format="png", dpi=150)
-                    buf.seek(0)
+                    pdp_key = f"{OUTPUT_PREFIX}/{hour_key}/pdp_{feat}.png"
+                    _write_png_to_gcs(client, GCS_BUCKET, pdp_key, fig)
 
-                    blob = client.bucket(GCS_BUCKET).blob(
-                        f"{OUTPUT_PREFIX}/{pd.Timestamp.utcnow().tz_convert('UTC').strftime('%Y%m%d%H')}/pdp_{feat}.png"
-                    )
-                    blob.upload_from_string(buf.read(), content_type="image/png")
-                    plt.close(fig)
-                
-    # --- Output path: HOURLY folder structure ---
-    now_utc = pd.Timestamp.utcnow().tz_convert("UTC")
-    preds_key = f"{OUTPUT_PREFIX}/{now_utc.strftime('%Y%m%d%H')}/predictions.csv"
-    metrics_key = f"{OUTPUT_PREFIX}/{now_utc.strftime('%Y%m%d%H')}/metrics.csv"
-    pi_key = f"{OUTPUT_PREFIX}/{now_utc.strftime('%Y%m%d%H')}/permutation_importance.csv"
+    # --- Output paths ---
+    preds_key = f"{OUTPUT_PREFIX}/{hour_key}/predictions.csv"
+    metrics_key = f"{OUTPUT_PREFIX}/{hour_key}/metrics.csv"
+    pi_key = f"{OUTPUT_PREFIX}/{hour_key}/permutation_importance.csv"
 
     if not dry_run and len(preds_df) > 0:
         _write_csv_to_gcs(client, GCS_BUCKET, preds_key, preds_df)
@@ -241,9 +297,8 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
             logging.info("Wrote permutation importance to gs://%s/%s", GCS_BUCKET, pi_key)
     else:
         logging.info("Dry run or no holdout rows; skip write. Would write to gs://%s/%s", GCS_BUCKET, preds_key)
-    
 
-   return {
+    return {
         "status": "ok",
         "today_local": str(today_local),
         "train_rows": int(len(train_df)),
@@ -259,6 +314,7 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
         "dry_run": dry_run,
         "timezone": TIMEZONE,
     }
+
 
 def train_dt_http(request):
     try:
