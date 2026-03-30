@@ -22,8 +22,10 @@ from sklearn.metrics import (
     mean_absolute_percentage_error,
 )
 from sklearn.inspection import permutation_importance, PartialDependenceDisplay
-
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 # ---- ENV ----
 PROJECT_ID = os.getenv("PROJECT_ID", "")
