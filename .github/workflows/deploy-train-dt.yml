@@ -195,3 +195,4 @@ jobs:
             -H "Authorization: Bearer ${TOKEN}" \
             -H "Content-Type: application/json" \
             -d '${{ env.SCHEDULE_BODY }}' || true
+            
