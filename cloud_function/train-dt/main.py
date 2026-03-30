@@ -172,7 +172,7 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
         if holdout_df["price_num"].notna().any():
             y_true = holdout_df["price_num"]
             mask = y_true.notna()
-            if mask.any():
+           if mask.any():
                 mae_today = float(mean_absolute_error(y_true[mask], y_hat[mask]))
                 rmse_today = float(np.sqrt(mean_squared_error(y_true[mask], y_hat[mask])))
                 mape_today = float(mean_absolute_percentage_error(y_true[mask], y_hat[mask]))
@@ -187,8 +187,9 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
                     "rmse": rmse_today,
                     "mape": mape_today,
                     "bias": bias_today,
-                   }]) 
-                    perm = permutation_importance(
+                }])
+
+                perm = permutation_importance(
                     pipe,
                     X_h[mask],
                     y_true[mask],
@@ -205,7 +206,7 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
                     "importance_std": perm.importances_std,
                 }).sort_values("importance_mean", ascending=False)
 
-                 top_pdp_features = ["mileage_num", "year_num", "vehicle_age"]
+                top_pdp_features = ["mileage_num", "year_num", "vehicle_age"]
 
                 for feat in top_pdp_features:
                     fig, ax = plt.subplots(figsize=(6, 4))
@@ -220,7 +221,6 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
                     )
                     blob.upload_from_string(buf.read(), content_type="image/png")
                     plt.close(fig)
-               
                 
     # --- Output path: HOURLY folder structure ---
     now_utc = pd.Timestamp.utcnow().tz_convert("UTC")
@@ -243,7 +243,7 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
         logging.info("Dry run or no holdout rows; skip write. Would write to gs://%s/%s", GCS_BUCKET, preds_key)
     
 
-  return {
+   return {
         "status": "ok",
         "today_local": str(today_local),
         "train_rows": int(len(train_df)),
