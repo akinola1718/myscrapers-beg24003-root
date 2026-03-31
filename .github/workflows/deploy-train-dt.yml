@@ -23,7 +23,7 @@ env:
   TIMEOUT_SECONDS: "900"
   MEMORY: "2Gi"
   DATA_KEY: "structured/datasets/listings_master_llm.csv"
-  OUTPUT_PREFIX: "structured/model_preds"
+  OUTPUT_PREFIX: "structured/preds"
   # Align with your other workflows
   RUNTIME_SA: ${{ vars.RUNTIME_SA }}                 # function runtime SA (email)
   DEPLOYER_SA: ${{ vars.DEPLOYER_SA }}               # GitHub deploy SA (email)
