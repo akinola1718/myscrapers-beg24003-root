@@ -282,7 +282,7 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
                     _write_png_to_gcs(client, GCS_BUCKET, pdp_key, fig)
 
     # --- Output paths ---
-    preds_key = f"{OUTPUT_PREFIX}/{hour_key}/predictions.csv"
+    preds_key = f"{OUTPUT_PREFIX}/{hour_key}/preds_llm.csv"
     metrics_key = f"{OUTPUT_PREFIX}/{hour_key}/metrics.csv"
     pi_key = f"{OUTPUT_PREFIX}/{hour_key}/permutation_importance.csv"
 
