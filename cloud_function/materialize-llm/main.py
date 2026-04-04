@@ -129,7 +129,7 @@ def materialize_http(request: Request):
             run_ids = _list_run_ids(BUCKET_NAME, STRUCTURED_PREFIX)
             if not run_ids:
                 return jsonify({"ok": False, "error": f"no runs found under {STRUCTURED_PREFIX}/"}), 200
-            run_ids = run_ids[-1:]   # latest run only
+            #run_ids = run_ids[-1:]   # latest run only
             
         #try:
             #body = request.get_json(silent=True) or {}
