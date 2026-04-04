@@ -17,7 +17,7 @@ from google.cloud import storage
 # -------------------- ENV --------------------
 BUCKET_NAME        = os.getenv("GCS_BUCKET")                      # REQUIRED
 STRUCTURED_PREFIX  = os.getenv("STRUCTURED_PREFIX", "structured") # e.g., "structured"
-MAX_FILES= int(os.getenv("MAX_FILES","30"))
+MAX_FILES= int(os.getenv("MAX_FILES","20"))
 
 storage_client = storage.Client()
 
