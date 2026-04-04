@@ -103,7 +103,28 @@ def _write_csv(records: Iterable[Dict], dest_key: str, columns=CSV_COLUMNS) -> i
             w.writerow(row)
             n += 1
     return n  # close() finalizes the upload
+    
+def _read_existing_master(bucket: str, key: str) -> Dict[str, Dict]:
+    """
+    Read the existing master CSV from GCS, if it exists, and return a dict
+    keyed by post_id.
+    """
+    b = storage_client.bucket(bucket)
+    blob = b.blob(key)
 
+    if not blob.exists():
+        return {}
+
+    data = blob.download_as_text()
+    reader = csv.DictReader(io.StringIO(data))
+
+    existing = {}
+    for row in reader:
+        pid = row.get("post_id")
+        if pid:
+            existing[pid] = row
+    return existing
+    
 def materialize_http(request: Request):
     """
     HTTP POST (no body needed).
@@ -129,7 +150,7 @@ def materialize_http(request: Request):
             run_ids = _list_run_ids(BUCKET_NAME, STRUCTURED_PREFIX)
             if not run_ids:
                 return jsonify({"ok": False, "error": f"no runs found under {STRUCTURED_PREFIX}/"}), 200
-            #run_ids = run_ids[-1:]   # latest run only
+            run_ids = run_ids[-1:]   # latest run only
             
         #try:
             #body = request.get_json(silent=True) or {}
@@ -145,10 +166,15 @@ def materialize_http(request: Request):
             #if not run_ids:
                 #return jsonify({"ok": False, "error": f"no runs found under {STRUCTURED_PREFIX}/"}), 200
             #run_ids = run_ids[-1:]
+       base = f"{STRUCTURED_PREFIX}/datasets"
+       final_key = f"{base}/listings_master_llm.csv"
 
-        latest_by_post: Dict[str, Dict] = {}
+# Start from existing master so the dataset grows over time
+       latest_by_post: Dict[str, Dict] = _read_existing_master(BUCKET_NAME, final_key)
+
+# Merge in records from the newest run(s)
         for rid in run_ids:
-            for rec in _jsonl_records_for_run(BUCKET_NAME, STRUCTURED_PREFIX, rid,max_files=max_files):
+            for rec in _jsonl_records_for_run(BUCKET_NAME, STRUCTURED_PREFIX, rid, max_files=max_files):
                 pid = rec.get("post_id")
                 if not pid:
                     continue
@@ -156,16 +182,29 @@ def materialize_http(request: Request):
                 if (prev is None) or (_run_id_to_dt(rec.get("run_id", rid)) > _run_id_to_dt(prev.get("run_id", ""))):
                     latest_by_post[pid] = rec
 
-        base = f"{STRUCTURED_PREFIX}/datasets"
-        final_key = f"{base}/listings_master_llm.csv"
-        rows = _write_csv(latest_by_post.values(), final_key)
+        rows = _write_csv(latest_by_post.values(), final_key) 
+    
+       # latest_by_post: Dict[str, Dict] = {}
+       # for rid in run_ids:
+       #     for rec in _jsonl_records_for_run(BUCKET_NAME, STRUCTURED_PREFIX, rid,max_files=max_files):
+       #         pid = rec.get("post_id")
+       #         if not pid:
+       #             continue
+       #         prev = latest_by_post.get(pid)
+       #         if (prev is None) or (_run_id_to_dt(rec.get("run_id", rid)) > _run_id_to_dt(prev.get("run_id", ""))):
+       #             latest_by_post[pid] = rec
+
+       # base = f"{STRUCTURED_PREFIX}/datasets"
+       # final_key = f"{base}/listings_master_llm.csv"
+       # rows = _write_csv(latest_by_post.values(), final_key)
 
         return jsonify({
             "ok": True,
             "runs_scanned": len(run_ids),
             "unique_listings": len(latest_by_post),
             "rows_written": rows,
-            "max_files":max_files,
+            "latest_run_processed": run_ids[-1] if run_ids else None,
+            #"max_files":max_files,
             "output_csv": f"gs://{BUCKET_NAME}/{final_key}"
         }), 200
     except Exception as e:
