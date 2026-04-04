@@ -17,13 +17,13 @@ from google.cloud import storage
 # -------------------- ENV --------------------
 BUCKET_NAME        = os.getenv("GCS_BUCKET")                      # REQUIRED
 STRUCTURED_PREFIX  = os.getenv("STRUCTURED_PREFIX", "structured") # e.g., "structured"
-MAX_FILES          = int(os.getenv("MAX_FILES", "30"))
+MAX_FILES= int(os.getenv("MAX_FILES","30"))
 
 storage_client = storage.Client()
 
 # Accept BOTH runIDs:
-RUN_ID_ISO_RE   = re.compile(r"^\d{8}T\d{6}Z$")  # 20251026T170002Z
-RUN_ID_PLAIN_RE = re.compile(r"^\d{14}$")        # 20251026170002
+RUN_ID_ISO_RE= re.compile(r"^\d{8}T\d{6}Z$")  # 20251026T170002Z
+RUN_ID_PLAIN_RE= re.compile(r"^\d{14}$")        # 20251026170002
 
 # Stable CSV schema for students
 CSV_COLUMNS = [
@@ -47,7 +47,7 @@ def _list_run_ids(bucket: str, structured_prefix: str) -> list[str]:
                 run_ids.append(rid)
     return sorted(run_ids)
 
-def _jsonl_records_for_run(bucket: str, structured_prefix: str, run_id: str, max_files: int = 30):
+def _jsonl_records_for_run(bucket:str,structured_prefix: str, run_id: str,max_files: int = 30):
     """
     Yield dict records from the most recent .jsonl files under
     .../run_id=<run_id>/jsonl_llm/
@@ -121,7 +121,7 @@ def materialize_http(request: Request):
             body = {}
 
         requested_run_id = body.get("run_id")
-        max_files = int(body.get("max_files", MAX_FILES))
+        max_files = int(body.get("max_files",MAX_FILES))
 
         if requested_run_id:
             run_ids = [requested_run_id]
@@ -148,7 +148,7 @@ def materialize_http(request: Request):
 
         latest_by_post: Dict[str, Dict] = {}
         for rid in run_ids:
-            for rec in _jsonl_records_for_run(BUCKET_NAME, STRUCTURED_PREFIX, rid, max_files=max_files):
+            for rec in _jsonl_records_for_run(BUCKET_NAME, STRUCTURED_PREFIX, rid,max_files=max_files):
                 pid = rec.get("post_id")
                 if not pid:
                     continue
@@ -165,7 +165,7 @@ def materialize_http(request: Request):
             "runs_scanned": len(run_ids),
             "unique_listings": len(latest_by_post),
             "rows_written": rows,
-            "max_files": max_files,
+            "max_files":max_files,
             "output_csv": f"gs://{BUCKET_NAME}/{final_key}"
         }), 200
     except Exception as e:
