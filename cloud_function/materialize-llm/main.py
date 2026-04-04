@@ -38,7 +38,7 @@ def _list_run_ids(bucket: str, structured_prefix: str) -> list[str]:
     it = storage_client.list_blobs(bucket, prefix=f"{structured_prefix}/", delimiter="/")
     for _ in it:  # populate it.prefixes
         pass
-    run_ids = []
+    run_ids = [] 
     for p in getattr(it, "prefixes", []):
         tail = p.rstrip("/").split("/")[-1]           # e.g. run_id=20251026170002
         if tail.startswith("run_id="):
