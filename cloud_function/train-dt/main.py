@@ -264,8 +264,8 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
                     random_state=42,
                     n_jobs=-1,
                 )
-
-                feature_names = pipe.named_steps["pre"].get_feature_names_out()
+                feature_names = X_h[mask].columns
+                #feature_names = pipe.named_steps["pre"].get_feature_names_out()
                 pi_df = pd.DataFrame(
                     {
                         "feature": feature_names,
