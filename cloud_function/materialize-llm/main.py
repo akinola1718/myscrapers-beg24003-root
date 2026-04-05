@@ -170,7 +170,7 @@ def materialize_http(request: Request):
 
         rows = _write_csv(latest_by_post.values(), final_key) 
     
-       return jsonify({
+        return jsonify({
             "ok": True,
             "runs_scanned": len(run_ids),
             "unique_listings": len(latest_by_post),
