@@ -151,12 +151,12 @@ def materialize_http(request: Request):
                 return jsonify({"ok": False, "error": f"no runs found under {STRUCTURED_PREFIX}/"}), 200
             run_ids = run_ids[-1:]   # latest run only
             
-       base = f"{STRUCTURED_PREFIX}/datasets"
-       final_key = f"{base}/listings_master_llm.csv"     
+        base = f"{STRUCTURED_PREFIX}/datasets"
+        final_key = f"{base}/listings_master_llm.csv"     
               
 
 # Start from existing master so the dataset grows over time
-       latest_by_post: Dict[str, Dict] = _read_existing_master(BUCKET_NAME, final_key)
+        latest_by_post: Dict[str, Dict] = _read_existing_master(BUCKET_NAME, final_key)
 
 # Merge in records from the newest run(s)
         for rid in run_ids:
