@@ -242,6 +242,7 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
                 rmse_today = float(np.sqrt(mean_squared_error(y_true[mask], y_hat[mask])))
                 mape_today = float(mean_absolute_percentage_error(y_true[mask], y_hat[mask]))
                 bias_today = float((y_hat[mask] - y_true[mask]).mean())
+                r2_today = float(r2_score(y_true[mask], y_hat[mask]))
 
                 metrics_df = pd.DataFrame(
                     [
