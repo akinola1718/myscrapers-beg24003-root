@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from google.cloud import storage
-
+from sklearn.model_selection import GridSearchCV
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.pipeline import Pipeline
@@ -99,6 +99,8 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
 
     df["mileage_per_year"] = df["mileage_num"] / df["vehicle_age"].replace(0, np.nan)
     df["mileage_per_year"] = df["mileage_per_year"].replace([np.inf, -np.inf], np.nan)
+    df["age_squared"] = df["vehicle_age"] ** 2
+    df["mileage_log"] = np.log1p(df["mileage_num"])
 
     # --- Standardize text/categorical fields ---
     text_cols = [
@@ -155,7 +157,10 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
         "make",
         "model",
         "transmission",
+        "zip_code",
         "condition",
+        "city",
+        "state"
         "fuel",
         "color",
         "body_type",
@@ -170,6 +175,8 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
         "mileage_num",
         "vehicle_age",
         "mileage_per_year",
+        "age_squared",
+        "mileage_log",
     ]
 
     feats = cat_cols + num_cols
@@ -197,17 +204,34 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
         ]
     )
 
-    model = DecisionTreeRegressor(
-        max_depth=max_depth,
-        min_samples_leaf=min_samples_leaf,
-        random_state=42,
-    )
+    model = DecisionTreeRegressor(random_state=42)
+
     pipe = Pipeline([("pre", pre), ("model", model)])
 
     X_train = train_df[feats]
-    y_train = train_df[target]
-    pipe.fit(X_train, y_train)
+    y_train = train_df["price_log"]
 
+    param_grid = {
+        "model__max_depth": [5, 8, 12, 16, 20, None],
+        "model__min_samples_leaf": [1, 2, 5, 10],
+        "model__min_samples_split": [2, 5, 10, 20],
+        "model__ccp_alpha": [0.0, 0.0001, 0.001, 0.01],
+    }
+
+    grid = GridSearchCV(
+        estimator=pipe,
+        param_grid=param_grid,
+        scoring="neg_mean_absolute_error",
+        cv=3,
+        n_jobs=-1,
+        verbose=1,
+    )
+
+    grid.fit(X_train, y_train)
+    pipe = grid.best_estimator_
+    logging.info("Best DecisionTree params: %s", grid.best_params_) 
+    
+   
     # ---- Predict/evaluate on today's holdout ----
     mae_today = None
     rmse_today = None
@@ -222,8 +246,10 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
     hour_key = now_utc.strftime("%Y%m%d%H")
 
     if not holdout_df.empty:
+        
         X_h = holdout_df[feats]
-        y_hat = pipe.predict(X_h)
+        y_hat_log = pipe.predict(X_h)
+        y_hat = np.expm1(y_hat_log)
 
         cols = ["post_id", "scraped_at", "make", "model", "year", "mileage", "price"]
         available_cols = [c for c in cols if c in holdout_df.columns]
@@ -259,7 +285,7 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
                         }
                     ]
                 )
-
+                              
                 # --- Actual vs Predicted regression plot ---
                 fig_reg, ax_reg = plt.subplots(figsize=(6, 6))
 
