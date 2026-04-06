@@ -20,6 +20,7 @@ from sklearn.metrics import (
     mean_absolute_error,
     mean_squared_error,
     mean_absolute_percentage_error,
+    r2_score,
 )
 from sklearn.inspection import permutation_importance, PartialDependenceDisplay
 import matplotlib
@@ -212,6 +213,7 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
     rmse_today = None
     mape_today = None
     bias_today = None
+    r2_today = None
     preds_df = pd.DataFrame()
     metrics_df = pd.DataFrame()
     pi_df = pd.DataFrame()
@@ -252,9 +254,43 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
                             "rmse": rmse_today,
                             "mape": mape_today,
                             "bias": bias_today,
+                            "r2": r2_today,
                         }
                     ]
                 )
+
+                # --- Actual vs Predicted regression plot ---
+                fig_reg, ax_reg = plt.subplots(figsize=(6, 6))
+
+                ax_reg.scatter(y_true[mask], y_hat[mask], alpha=0.6, edgecolor="none")
+
+                xy_min = min(np.min(y_true[mask]), np.min(y_hat[mask]))
+                xy_max = max(np.max(y_true[mask]), np.max(y_hat[mask]))
+
+                # 1:1 perfect prediction line
+                ax_reg.plot([xy_min, xy_max], [xy_min, xy_max], "k--", linewidth=1.5)
+
+                # Best-fit regression line
+                coef = np.polyfit(y_true[mask], y_hat[mask], 1)
+                x_line = np.linspace(xy_min, xy_max, 100)
+                y_line = coef[0] * x_line + coef[1]
+                ax_reg.plot(x_line, y_line, color="red", linewidth=2)
+
+                ax_reg.set_xlabel("Actual Price")
+                ax_reg.set_ylabel("Predicted Price")
+                ax_reg.set_title("Actual vs Predicted Price")
+
+                ax_reg.text(
+                    0.05, 0.95,
+                    f"$R^2$ = {r2_today:.3f}",
+                    transform=ax_reg.transAxes,
+                    ha="left",
+                    va="top",
+                    bbox=dict(facecolor="white", edgecolor="black")
+                )
+
+                reg_key = f"{OUTPUT_PREFIX}/{hour_key}/actual_vs_predicted.png"
+                _write_png_to_gcs(client, GCS_BUCKET, reg_key, fig_reg)
 
                 perm = permutation_importance(
                     pipe,
@@ -310,6 +346,7 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
         "rmse_today": rmse_today,
         "mape_today": mape_today,
         "bias_today": bias_today,
+        "r2_today": r2_today,
         "predictions_key": preds_key,
         "metrics_key": metrics_key,
         "pi_key": pi_key,
