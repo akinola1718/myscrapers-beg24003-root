@@ -143,6 +143,7 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
     holdout_df = df[df["date_local"] == today_local].copy()
 
     train_df = train_df[train_df["price_num"].notna()]
+    train_df["price_log"] = np.log1p(train_df["price_num"])
     dropped_for_target = int((df["date_local"] < today_local).sum()) - int(len(train_df))
     logging.info("Train rows after target clean: %d (dropped_for_target=%d)", len(train_df), dropped_for_target)
     logging.info("Holdout rows today (%s): %d", today_local, len(holdout_df))
@@ -160,7 +161,7 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
         "zip_code",
         "condition",
         "city",
-        "state"
+        "state",
         "fuel",
         "color",
         "body_type",
