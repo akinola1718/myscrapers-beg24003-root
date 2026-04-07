@@ -295,13 +295,14 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
                 xy_max = max(np.max(y_true[mask]), np.max(y_hat[mask]))
 
                 # 1:1 perfect prediction line
-                ax_reg.plot([xy_min, xy_max], [xy_min, xy_max], "k--", linewidth=1.5)
+                #ax_reg.plot([xy_min, xy_max], [xy_min, xy_max], "k--", linewidth=1.5)
 
                 # Best-fit regression line
                 coef = np.polyfit(y_true[mask], y_hat[mask], 1)
                 x_line = np.linspace(xy_min, xy_max, 100)
                 y_line = coef[0] * x_line + coef[1]
-                ax_reg.plot(x_line, y_line, color="red", linewidth=2)
+                ax_reg.plot(x_line, y_line, color="black", linewidth=2, label ="Regression line")
+                ax_reg.legend(loc="lower right", frameon=True)
 
                 ax_reg.set_xlabel("Actual Price")
                 ax_reg.set_ylabel("Predicted Price")
