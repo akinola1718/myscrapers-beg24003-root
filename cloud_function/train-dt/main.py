@@ -354,6 +354,61 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
     if not dry_run and len(preds_df) > 0:
         _write_csv_to_gcs(client, GCS_BUCKET, preds_key, preds_df)
         logging.info("Wrote predictions to gs://%s/%s (%d rows)", GCS_BUCKET, preds_key, len(preds_df))
+                # --- Bias Trend Plot ---
+        try:
+            import pandas as pd
+
+            # Collect recent metrics files (last N runs)
+            prefix = f"{OUTPUT_PREFIX}/"
+            blobs = list(client.list_blobs(GCS_BUCKET, prefix=prefix))
+
+            metric_files = sorted(
+                [b.name for b in blobs if b.name.endswith("metrics.csv")]
+            )[-30:]  # last 30 runs
+
+            all_metrics = []
+
+            for m in metric_files:
+                try:
+                    df_m = _read_csv_from_gcs(client, GCS_BUCKET, m)
+                    if not df_m.empty:
+                        df_m["source"] = m
+                        all_metrics.append(df_m)
+                except Exception:
+                    continue
+
+            if len(all_metrics) > 1:
+                df_all = pd.concat(all_metrics, ignore_index=True)
+
+                # Convert to datetime
+                df_all["today_local"] = pd.to_datetime(df_all["today_local"])
+
+                df_all = df_all.sort_values("today_local")
+
+                fig_bias, ax_bias = plt.subplots(figsize=(7, 4))
+
+                ax_bias.plot(
+                    df_all["today_local"],
+                    df_all["bias"],
+                    marker="o",
+                    linewidth=2,
+                )
+
+                ax_bias.axhline(0, linestyle="--")  # zero bias line
+
+                ax_bias.set_title("Bias Trend Over Time")
+                ax_bias.set_xlabel("Date")
+                ax_bias.set_ylabel("Bias (Pred - Actual)")
+
+                plt.xticks(rotation=45)
+
+                bias_key = f"{OUTPUT_PREFIX}/{hour_key}/bias_trend.png"
+                _write_png_to_gcs(client, GCS_BUCKET, bias_key, fig_bias)
+
+                logging.info("Wrote bias trend plot to gs://%s/%s", GCS_BUCKET, bias_key)
+
+        except Exception as e:
+            logging.warning("Bias trend plot failed: %s", e)
 
         if len(metrics_df) > 0:
             _write_csv_to_gcs(client, GCS_BUCKET, metrics_key, metrics_df)
