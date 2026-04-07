@@ -356,8 +356,7 @@ def run_once(dry_run: bool = False, max_depth: int = 12, min_samples_leaf: int =
         logging.info("Wrote predictions to gs://%s/%s (%d rows)", GCS_BUCKET, preds_key, len(preds_df))
                 # --- Bias Trend Plot ---
         try:
-            import pandas as pd
-
+           
             # Collect recent metrics files (last N runs)
             prefix = f"{OUTPUT_PREFIX}/"
             blobs = list(client.list_blobs(GCS_BUCKET, prefix=prefix))
