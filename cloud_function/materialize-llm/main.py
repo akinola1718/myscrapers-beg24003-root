@@ -100,7 +100,7 @@ def _write_csv(records: Iterable[Dict], dest_key: str, columns=CSV_COLUMNS) -> i
         w.writeheader()
         for rec in records:
             row = {c: rec.get(c, None) for c in columns}
-            w.writerow(row)
+            w.writerow(row) 
             n += 1
     return n  # close() finalizes the upload
     
